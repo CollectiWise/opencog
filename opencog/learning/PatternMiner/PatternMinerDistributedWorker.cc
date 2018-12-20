@@ -35,7 +35,7 @@
 #include <ifaddrs.h>
 
 #include <opencog/atoms/base/Handle.h>
-#include <opencog/atoms/proto/atom_types.h>
+#include <opencog/atoms/atom_types/atom_types.h>
 #include <opencog/query/BindLinkAPI.h>
 #include <opencog/util/Config.h>
 #include <opencog/util/algorithm.h>
@@ -383,9 +383,19 @@ void DistributedPatternMiner::growPatternsDepthFirstTask(unsigned int thread_ind
                 startFromLinkContainWhiteKeyword = true;
         }
 
-        extendAPatternForOneMoreGramRecursively(newLink, *observing_as, Handle::UNDEFINED, lastGramLinks, 0, lastGramValueToVarMap,
-                                                patternVarMap, false, allNewMinedPatternsCurTask, allHTreeNodesCurTask, allNewMinedPatternInfo, thread_index,startFromLinkContainWhiteKeyword);
-
+        extendPatternForOneMoreGramRecursively(newLink,
+                                               *observing_as,
+                                               Handle::UNDEFINED,
+                                               lastGramLinks,
+                                               0,
+                                               lastGramValueToVarMap,
+                                               patternVarMap,
+                                               false,
+                                               allNewMinedPatternsCurTask,
+                                               allHTreeNodesCurTask,
+                                               allNewMinedPatternInfo,
+                                               thread_index,
+                                               startFromLinkContainWhiteKeyword);
 
         // send new mined patterns to the server
         for (MinedPatternInfo& pInfo : allNewMinedPatternInfo)

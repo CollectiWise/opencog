@@ -79,6 +79,12 @@
     ((has-match? "ordered-goal:" str) (result:suffix 'ORD-GOAL location #f))
     ((has-match? "goal:" str) (result:suffix 'GOAL location #f))
     ((has-match? "#goal:" str) (result:suffix 'RGOAL location #f))
+    ((has-match? "parallel-rules:" str)
+      (result:suffix 'PARALLEL-RULES location #f))
+    ((has-match? "link-concept:" str)
+      (result:suffix 'LINK-CONCEPT location #f))
+    ((has-match? "#link-concept:" str)
+      (result:suffix 'RLINK-CONCEPT location #f))
     ((has-match? "#!" str) ; This should be checked always before #
       ; TODO Add tester function for this
       (cons (make-lexical-token 'SAMPLE_INPUT location #f) ""))
@@ -143,9 +149,19 @@
     ((has-match? "!" str) (result:suffix 'NOT location #f))
     ((has-match? "[?]" str) (result:suffix '? location "?"))
     ((has-match? "=" str) (result:suffix 'EQUAL location #f))
+    ; For time -- a.m. and p.m.
+    ; Just catch it to avoid it being splitted into multiple words
+    ; Should be done before any literal / lemma matching
+    ((has-match? "[ap]\\.m\\." str)
+      (result:suffix 'STRING location
+        (string-trim-both (match:substring current-match))))
     ; Words with apostrophe, e.g. I'm, it's etc
     ((has-match? "[a-zA-Z]+['’][a-zA-Z]+" str)
       (result:suffix 'LITERAL_APOS location
+        (string-trim-both (match:substring current-match))))
+    ; Literals for example: Mr. Dr. etc
+    ((has-match? "[a-zA-Z]+\\." str)
+      (result:suffix 'LITERAL location
         (string-trim-both (match:substring current-match))))
     ; Literals -- words start with a '
     ((has-match? "'[a-zA-Z]+\\b" str)
@@ -158,15 +174,15 @@
         ; Literals, words in the pattern that are not in their canonical forms
         (result:suffix 'LITERAL location
           (string-trim-both (match:substring current-match)))))
-    ((has-match? "[0-9]+[0-9.]*" str)
+    ((has-match? "[0-9]+[0-9.]*\\b" str)
       (result:suffix 'NUM location
         (string-trim-both (match:substring current-match))))
     ((has-match? "[|]" str)
       (result:suffix 'VLINE location
-         (string-trim-both (match:substring current-match))))
+        (string-trim-both (match:substring current-match))))
     ((has-match? "," str)
       (result:suffix 'COMMA location
-         (string-trim-both (match:substring current-match))))
+        (string-trim-both (match:substring current-match))))
     ; This should always be near the end, because it is broadest of all.
     ((has-match? "[~’'._!?0-9a-zA-Z-]+" str)
       (result:suffix 'STRING location
@@ -234,7 +250,7 @@
     ; ? = Comparison tests
     ; VLINE = Vertical Line |
     (CONCEPT TOPIC RESPONDERS REJOINDERS GAMBIT URGE ORD-GOAL GOAL RGOAL COMMENT
-     SAMPLE_INPUT
+     SAMPLE_INPUT PARALLEL-RULES LINK-CONCEPT RLINK-CONCEPT
       (right: LPAREN LSBRACKET << ID VAR * ^ < LEMMA LITERAL LITERAL_APOS NUM DICTKEY
               STRING *~n *n UVAR MVAR MOVAR EQUAL NOT RESTART LBRACE VLINE COMMA
               SET_DELAY)
@@ -254,6 +270,8 @@
       (goal) : (create-top-lv-goal (eval-string (string-append "(list " $1 ")")))
       (ordered-goal) :
         (create-top-lv-goal (eval-string (string-append "(list " $1 ")")) #t)
+      (PARALLEL-RULES) : (create-top-lv-goal (list (cons "Parallel-Rules" 1)))
+      (link-concept) : (link-rule-to-concepts (string-split $1 #\sp))
       (rule) : $1
       (enter) : $1
       (COMMENT) : #f
@@ -313,91 +331,211 @@
 
     ; Rule grammar
     (rule
+      ; ----- Responders ----- ;
+      (rule-goal rule-lconcept RESPONDERS name context action) :
+        (create-rule
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $6 ")"))
+          (eval-string (string-append "(list " $1 ")"))
+          $4 $3 $2)
+      (rule-lconcept rule-goal RESPONDERS name context action) :
+        (create-rule
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $6 ")"))
+          (eval-string (string-append "(list " $2 ")"))
+          $4 $3 $1)
       (rule-goal RESPONDERS name context action) :
         (create-rule
           (eval-string (string-append "(list " $4 ")"))
           (eval-string (string-append "(list " $5 ")"))
           (eval-string (string-append "(list " $1 ")"))
-          $3 $2)
+          $3 $2 (list))
+      (rule-lconcept RESPONDERS name context action) :
+        (create-rule
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $5 ")"))
+          (list) $3 $2 $1)
+      (rule-goal rule-lconcept RESPONDERS context action) :
+        (create-rule
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $1 ")"))
+          "" $3 $2)
+      (rule-lconcept rule-goal RESPONDERS context action) :
+        (create-rule
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $2 ")"))
+          "" $3 $1)
       (rule-goal RESPONDERS context action) :
         (create-rule
           (eval-string (string-append "(list " $3 ")"))
           (eval-string (string-append "(list " $4 ")"))
           (eval-string (string-append "(list " $1 ")"))
-          "" $2)
+          "" $2 (list))
+      (rule-lconcept RESPONDERS context action) :
+        (create-rule
+          (eval-string (string-append "(list " $3 ")"))
+          (eval-string (string-append "(list " $4 ")"))
+          (list) "" $2 $1)
       (RESPONDERS name context action) :
         (create-rule
           (eval-string (string-append "(list " $3 ")"))
           (eval-string (string-append "(list " $4 ")"))
-          (list) $2 $1)
+          (list) $2 $1 (list))
       (RESPONDERS context action) :
         (create-rule
           (eval-string (string-append "(list " $2 ")"))
           (eval-string (string-append "(list " $3 ")"))
-          (list) "" $1)
+          (list) "" $1 (list))
+      ; ----- Rejoinders ----- ;
+      (rule-goal rule-lconcept REJOINDERS name context action) :
+        (create-rule
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $6 ")"))
+          (eval-string (string-append "(list " $1 ")"))
+          $4 $3 $2)
+      (rule-lconcept rule-goal REJOINDERS name context action) :
+        (create-rule
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $6 ")"))
+          (eval-string (string-append "(list " $2 ")"))
+          $4 $3 $1)
       (rule-goal REJOINDERS name context action) :
         (create-rule
           (eval-string (string-append "(list " $4 ")"))
           (eval-string (string-append "(list " $5 ")"))
           (eval-string (string-append "(list " $1 ")"))
-          $3 $2)
+          $3 $2 (list))
+      (rule-lconcept REJOINDERS name context action) :
+        (create-rule
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $5 ")"))
+          (list) $3 $2 $1)
+      (rule-goal rule-lconcept REJOINDERS context action) :
+        (create-rule
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $1 ")"))
+          "" $3 $2)
+      (rule-lconcept rule-goal REJOINDERS context action) :
+        (create-rule
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $2 ")"))
+          "" $3 $1)
       (rule-goal REJOINDERS context action) :
         (create-rule
           (eval-string (string-append "(list " $3 ")"))
           (eval-string (string-append "(list " $4 ")"))
           (eval-string (string-append "(list " $1 ")"))
-          "" $2)
-      ; TODO: Make sure there is a parent rule before
-      ; accepting any rejoinders
+          "" $2 (list))
+      (rule-lconcept REJOINDERS context action) :
+        (create-rule
+          (eval-string (string-append "(list " $3 ")"))
+          (eval-string (string-append "(list " $4 ")"))
+          (list) "" $2 $1)
       (REJOINDERS name context action) :
         (create-rule
           (eval-string (string-append "(list " $3 ")"))
           (eval-string (string-append "(list " $4 ")"))
-          (list) $2 $1)
+          (list) $2 $1 (list))
       (REJOINDERS context action) :
         (create-rule
           (eval-string (string-append "(list " $2 ")"))
           (eval-string (string-append "(list " $3 ")"))
-          (list) "" $1)
+          (list) "" $1 (list))
+      ; ----- Gambits ----- ;
       ; Note, do not support a gambit that has a "name"
       ; but no context -- it's ambiguous to determine
       ; whether it's really a "name" or just the first
       ; word of the "action"
+      (rule-goal rule-lconcept GAMBIT name context action) :
+        (create-rule
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $6 ")"))
+          (eval-string (string-append "(list " $1 ")"))
+          $4 $3 $2)
+      (rule-lconcept rule-goal GAMBIT name context action) :
+        (create-rule
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $6 ")"))
+          (eval-string (string-append "(list " $2 ")"))
+          $4 $3 $1)
       (rule-goal GAMBIT name context action) :
         (create-rule
           (eval-string (string-append "(list " $4 ")"))
           (eval-string (string-append "(list " $5 ")"))
           (eval-string (string-append "(list " $1 ")"))
-          $3 $2)
+          $3 $2 (list))
+      (rule-lconcept GAMBIT name context action) :
+        (create-rule
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $5 ")"))
+          (list) $3 $2 $1)
+      (rule-goal rule-lconcept GAMBIT context action) :
+        (create-rule
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $1 ")"))
+          "" $3 $2)
+      (rule-lconcept rule-goal GAMBIT context action) :
+        (create-rule
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $5 ")"))
+          (eval-string (string-append "(list " $2 ")"))
+          "" $3 $1)
       (rule-goal GAMBIT context action) :
         (create-rule
           (eval-string (string-append "(list " $3 ")"))
           (eval-string (string-append "(list " $4 ")"))
           (eval-string (string-append "(list " $1 ")"))
-          "" $2)
+          "" $2 (list))
+      (rule-lconcept GAMBIT context action) :
+        (create-rule
+          (eval-string (string-append "(list " $3 ")"))
+          (eval-string (string-append "(list " $4 ")"))
+          (list) "" $2 $1)
+      (rule-goal rule-lconcept GAMBIT action) :
+        (create-rule
+          (list)
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $1 ")"))
+          "" $3 $2)
+      (rule-lconcept rule-goal GAMBIT action) :
+        (create-rule
+          (list)
+          (eval-string (string-append "(list " $4 ")"))
+          (eval-string (string-append "(list " $2 ")"))
+          "" $3 $1)
       (rule-goal GAMBIT action) :
         (create-rule
           (list)
           (eval-string (string-append "(list " $3 ")"))
           (eval-string (string-append "(list " $1 ")"))
-          "" $2)
+          "" $2 (list))
+      (rule-lconcept GAMBIT action) :
+        (create-rule
+          (list)
+          (eval-string (string-append "(list " $3 ")"))
+          (list) "" $2 $1)
       ; Same as the above, context is needed for a
       ; named gambit
       (GAMBIT name context action) :
         (create-rule
           (eval-string (string-append "(list " $3 ")"))
           (eval-string (string-append "(list " $4 ")"))
-          (list) $2 $1)
+          (list) $2 $1 (list))
       (GAMBIT context action) :
         (create-rule
           (eval-string (string-append "(list " $2 ")"))
           (eval-string (string-append "(list " $3 ")"))
-          (list) "" $1)
+          (list) "" $1 (list))
       (GAMBIT action) :
         (create-rule
           (list)
           (eval-string (string-append "(list " $2 ")"))
-          (list) "" $1)
+          (list) "" $1 (list))
     )
 
     (urge
@@ -428,6 +566,14 @@
       (STRING EQUAL NUM) : (format #f "(cons \"~a\" ~a)" $1 $3)
     )
 
+    (link-concept
+      (LINK-CONCEPT LPAREN names RPAREN) : $3
+    )
+
+    (rule-lconcept
+      (RLINK-CONCEPT LPAREN names RPAREN) : (string-split $3 #\sp)
+    )
+
     (context
       (LPAREN RPAREN) : "(cons 'empty-context (list))"
       (LPAREN negation RPAREN) : $2
@@ -455,6 +601,7 @@
       (variable) : $1
       (user-variable) : $1
       (function) : $1
+      (function-compare) : $1
       (choice) : $1
       (optional) : $1
       (variable ? concept) :
@@ -506,6 +653,7 @@
 
     (literal
       (LITERAL) : (format #f "(cons 'word \"~a\")" $1)
+      (NUM) : (format #f "(cons 'word \"~a\")" $1)
       (STRING) : (format #f "(cons 'word \"~a\")" $1)
     )
 
@@ -574,12 +722,19 @@
     (variable-grounding
       (MVAR) : (format #f "(cons 'get_lvar ~a)" $1)
       (MOVAR) : (format #f "(cons 'get_wvar ~a)" $1)
+      (MVAR operator right-compare) :
+        (format #f "(cons 'compare (list \"~a\" ~a ~a))"
+          $2 (format #f "(cons 'get_lvar ~a)" $1) $3)
+      (MOVAR operator right-compare) :
+        (format #f "(cons 'compare (list \"~a\" ~a ~a))"
+          $2 (format #f "(cons 'get_wvar ~a)" $1) $3)
     )
 
     (user-variable
-      (UVAR) : (format #f "(cons 'uvar_exist \"~a\")" $1)
-      (UVAR EQUAL name) :
-        (format #f "(cons 'uvar_equal (list \"~a\" \"~a\"))" $1 $3)
+      (UVAR) : (format #f "(cons 'uvar_eval \"~a\")" $1)
+      (UVAR operator right-compare) :
+        (format #f "(cons 'compare (list \"~a\" ~a ~a))"
+          $2 (format #f "(cons 'get_uvar \"~a\")" $1) $3)
     )
 
     (negation
@@ -599,6 +754,11 @@
       (literal-apos) : $1
       (phrase) : $1
       (concept) : $1
+    )
+
+    (function-compare
+      (function operator right-compare) :
+        (format #f "(cons 'compare (list \"~a\" ~a ~a))" $2 $1 $3)
     )
 
     (function
@@ -706,6 +866,23 @@
       (COMMA) : ""
       (name) : (format #f "(cons 'str \"~a\")" $1)
       (UVAR) : (format #f "(cons 'get_uvar \"~a\")" $1)
+    )
+
+    (right-compare
+      (UVAR) : (format #f "(cons 'get_uvar \"~a\")" $1)
+      (name) : (format #f "(cons 'str \"~a\")" $1)
+      (DQUOTE phrase-terms DQUOTE) : (format #f "(cons 'str \"~a\")" $2)
+      (concept) : $1
+      (function) : $1
+    )
+
+    (operator
+      (<) : "smaller"
+      (>) : "greater"
+      (EQUAL EQUAL) : "equal"
+      (< EQUAL) : "smaller_equal"
+      (> EQUAL) : "greater_equal"
+      (NOT EQUAL) : "not_equal"
     )
   )
 )

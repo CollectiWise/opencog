@@ -35,6 +35,7 @@ Here is a list of features that are fully supported in GHOST:
 - [Range-restricted Wildcard](https://github.com/bwilcox-1234/ChatScript/blob/master/WIKI/ChatScript-Basic-User-Manual.md#range-restricted-wildcards-n)
 - [Variable](https://github.com/bwilcox-1234/ChatScript/blob/master/WIKI/ChatScript-Basic-User-Manual.md#_-match-variables)
 - [User Variable](https://github.com/bwilcox-1234/ChatScript/blob/master/WIKI/ChatScript-Basic-User-Manual.md#user_variables)
+  - There is one difference, in ChatScript when a user variable is placed in the context, e.g. `?: ( what is my name $firstname ) Your name is $firstname.`, it checks whether `$firstname` has been defined, and trigger the rule if it's been defined and the input is "what is my name". In GHOST, on the contrary, it also checks the value of that user variable against the input to see if they match, e.g. `u: (I'm $name) I know.` and `$name` == "Sam", then rule will only be triggered if the input is "I'm Sam".
 - [Sentence Boundary](https://github.com/bwilcox-1234/ChatScript/blob/master/WIKI/ChatScript-Basic-User-Manual.md#sentence-boundaries--and-)
 - [Negation](https://github.com/bwilcox-1234/ChatScript/blob/master/WIKI/ChatScript-Basic-User-Manual.md#not--and-notnot-)
   - Currently predicates (functions) are not supported, only accept word, lemma, phrase, and concepts.
@@ -52,6 +53,15 @@ Here is a list of features that are fully supported in GHOST:
 There are different types of rules in ChatScript -- responders (`u:` `s:` `?:`) and gambits (`r:` `t:`). Currently they are handled without distinction, except for questions (`?:`) which will only be triggered if the input is a question.
 
 [Rejoinder](https://github.com/bwilcox-1234/ChatScript/blob/master/WIKI/ChatScript-Basic-User-Manual.md#fast-overview-of-topic-files-top) (`a:` to `q:`) is also supported. Rejoinders have a higher priority than responders and gambits so it will always be selected if it satisfies the context. If more than one rejoinders satisfy the current context, the one that's defined first will always be selected.
+
+Simple comparisons (`=` `!=` `<` `<=` `>` `>=`) can be done in the context of a rule, for variables, user variables, and functions, e.g.
+```
+(^get_arousal() > 0)
+
+(you are _* '_0!=lazy)
+
+(^get_value() <= $threshold)
+```
 
 The action selection in GHOST is goal-driven, so all of the GHOST rules should be linked to one or more goals. You can link more than one goal to a rule, just like defining concepts, use a space to separate them. The value assigned to a goal will affect the strength of the rules (`ImplicationLinks`) linked to that goal.
 
@@ -102,6 +112,30 @@ goal: (please_user=0.9)
 goal: (novelty=0.9)
   ; ... rules under the novelty goal ...
 ```
+
+Apart from the above, one can also define a special set of rules, aka parallel-rules, that will always be evaluated (and triggered if they are satisfiable) in the background, before evaluating the normal GHOST rules. Similar to creating rules under a certain goal, use the keyword `parallel-rules:` to create them:
+
+```
+parallel-rules:
+  ; ... define the rules here ...
+```
+
+Parallel-rules are 'kept' by default, that means it can be triggered more than once unless you explicitly unkeep it using `^unkeep()`. The same input will still be handled by the normal GHOST rules even if one or more parallel-rules have been triggered by it. Currently, rejoinders are not supported in parallel-rules.
+
+One can also optionally link one or more concepts to a rule, so that the importance of a rule will change with the linked concepts. Similar to defining goals, both top-level and rule-level are supported:
+
+```
+; top-level
+link-concept: (pets animals)
+
+  ; ... rules link to both "pets" and "animals" concepts ...
+
+  ; rule-level
+  #link-concept: (fish)
+    ; ... the rule that will link to the concept "fist", as well as the top-level "pets" and "animals" concepts ...
+```
+
+Note, `link-concept` will be reset when another top-level goal is seen.
 
 Basic examples of how to use GHOST is available [HERE](https://github.com/opencog/opencog/blob/master/examples/ghost/basic.scm)
 
@@ -158,13 +192,15 @@ agents-start opencog::AFImportanceDiffusionAgent opencog::WAImportanceDiffusionA
 
 Note, rules being created after running this will be slimmer (preferred) and can only work with this ECAN approach. They are NOT backward-compatible with the `test-ghost`.
 
-8) Start authoring, e.g.
+8) Start authoring by creating rules in a text file, e.g.
 
 ```
-(ghost-parse "#goal: (novelty=0.24) u: (eat apple) I want an apple")
+#goal: (novelty=0.24)
+
+u: (eat apple) I want an apple
 ```
 
-Or use `ghost-parse-files` to parse rule files.
+Then use `ghost-parse-files` to parse rule file(s).
 
 ```
 (ghost-parse-files "path/to/the/rule/file1" "path/to/the/rule/file2")

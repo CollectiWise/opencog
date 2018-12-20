@@ -1,20 +1,22 @@
 ADD_LIBRARY(miner SHARED
-  Miner
-  HandleTree
-  Valuations
+	Miner
+	MinerUtils
+	HandleTree
+	Valuations
 )
 
 TARGET_LINK_LIBRARIES(miner
-  ${COGUTIL_LIBRARY}
-  ${ATOMSPACE_LIBRARIES}
+	${COGUTIL_LIBRARY}
+	${ATOMSPACE_LIBRARIES}
 )
 
 INSTALL (TARGETS miner DESTINATION "lib${LIB_DIR_SUFFIX}/opencog")
 
 INSTALL (FILES
 	Miner.h
+	MinerUtils.h
 	HandleTree.h
-    Valuations.h
+	Valuations.h
 	DESTINATION "include/opencog/learning/miner"
 )
 
@@ -33,7 +35,7 @@ IF (HAVE_GUILE)
   ADD_GUILE_MODULE (FILES
     miner.scm
     miner-utils.scm
-    MODULE_DESTINATION "${DATADIR}/scm/opencog/miner"
+    MODULE_DESTINATION "${GUILE_SITE_DIR}/opencog/miner"
   )
 
   ADD_SUBDIRECTORY (rules)

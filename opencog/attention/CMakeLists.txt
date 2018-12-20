@@ -25,6 +25,7 @@ TARGET_LINK_LIBRARIES(attention-types
 	${ATOMSPACE_atomcore_LIBRARY}
 	${ATOMSPACE_atombase_LIBRARY}
 	${ATOMSPACE_atomproto_LIBRARY}
+	${ATOMSPACE_atomtypes_LIBRARY}
 )
 
 # --------------------------------------------------
@@ -59,19 +60,15 @@ INSTALL (TARGETS attention
 	LIBRARY DESTINATION "lib${LIB_DIR_SUFFIX}/opencog"
 )
 
-INSTALL (FILES
-	${CMAKE_CURRENT_SOURCE_DIR}/attention.scm
-	DESTINATION "${DATADIR}/scm/opencog"
+ADD_GUILE_MODULE (FILES
+	attention.scm
+	default-param-values.scm
+	MODULE_DESTINATION "${GUILE_SITE_DIR}/opencog/attention"
 )
 
 INSTALL (FILES
 	${CMAKE_CURRENT_BINARY_DIR}/attention_types.scm
-	${CMAKE_CURRENT_SOURCE_DIR}/default-param-values.scm
-	DESTINATION "${DATADIR}/scm/opencog/attention"
-)
-
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/default-param-values.scm
-	${CMAKE_CURRENT_BINARY_DIR}/default-param-values.scm
+	DESTINATION "${GUILE_SITE_DIR}/opencog/attention"
 )
 
 INSTALL (FILES

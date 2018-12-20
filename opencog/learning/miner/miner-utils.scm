@@ -74,43 +74,116 @@
     (for-each mk-member texts-lst))
   texts-cpt)
 
-(define (configure-rules pm-rbs)
-  ;; Load and associate rules to pm-rbs
-  (let* ((rule-path "opencog/miner/rules/")
-         (base-rule-files (list "shallow-abstraction.scm"
-                                "specialization.scm"))
-         (mk-full-path (lambda (rf) (string-append rule-path rf)))
-         (rule-files (map mk-full-path base-rule-files)))
-    (for-each load-from-path rule-files)
-    (let* ((rules (list ;; TODO somehow shallow-abstraction-rule-name
-                        ;; and specialization-rule-name are not
-                        ;; accessible thom here after loading
-                        ;; shallow-abstraction.scm and
-                        ;; specialization.scm. For that reason we use
-                        ;; their Atomese definitions instead. This
-                        ;; might be a guile bug.
-                        (DefinedSchemaNode "shallow-abstraction-rule")
-                        (DefinedSchemaNode "specialization-rule"))))
-      (ure-add-rules pm-rbs rules))))
+(define (mk-full-rule-path brf)
+  (let ((rule-path "opencog/miner/rules/"))
+    (string-append rule-path brf)))
 
-(define* (configure-miner pm-rbs #:key (maxiter -1))
+(define (configure-mandatory-rules pm-rbs)
+  ;; Load and associate mandatory rules to pm-rbs
+  (let* ((base-rule-files (list "shallow-specialization.scm"))
+         (rule-files (map mk-full-rule-path base-rule-files))
+         (rules (list ;; TODO somehow shallow-specialization-rule-name
+                      ;; are not accessible thom here after loading
+                      ;; shallow-specialization.scm. For that reason
+                      ;; we use its Atomese definition instead. This
+                      ;; might be a guile bug.
+                      (DefinedSchemaNode "shallow-specialization-rule"))))
+    (for-each load-from-path rule-files)
+    (ure-add-rules pm-rbs rules)))
+
+(define (false-tv? tv)
+  (equal? tv (stv 0 1)))
+
+(define* (configure-optional-rules pm-rbs
+                                   #:key
+                                   (incremental-expansion (stv 0 1))
+                                   (max-conjuncts -1))
+  ;; Load conjunction-expansion and associate to pm-rbs
+  (if (not (or (false-tv? incremental-expansion) (= max-conjuncts 1)))
+      (let* ((ie-tv (if (equal? #t) (stv 0.01 0.5) incremental-expansion))
+             (rule-pathfile (mk-full-rule-path "conjunction-expansion.scm"))
+             (namify (lambda (i)
+                       (string-concatenate
+                        (cons "conjunction-expansion-"
+                              (if (<= i 0)
+                                  (list "rule")
+                                  (list (number->string i) "ary-rule"))))))
+             (rulify (lambda (i)
+                       (list (DefinedSchemaNode (namify i)) ie-tv)))
+             (max-conjuncts? (lambda (x) (<= max-conjuncts x)))
+             (add1 (lambda (x) (+ x 1)))
+             (1-to-max-conjuncts (unfold max-conjuncts? identity add1 1))
+             (rules (if (<= max-conjuncts 0)
+                        ;; No maximum conjuncts
+                        (list (rulify 0))
+                        ;; At most max-conjuncts conjuncts
+                        (map rulify 1-to-max-conjuncts))))
+        (load-from-path rule-pathfile)
+        (ure-add-rules pm-rbs rules))))
+
+(define* (configure-rules pm-rbs
+                          #:key
+                          (incremental-expansion (stv 0 1))
+                          (max-conjuncts 3))
+  (configure-mandatory-rules pm-rbs)
+  (configure-optional-rules pm-rbs
+                            #:incremental-expansion incremental-expansion
+                            #:max-conjuncts max-conjuncts))
+
+(define* (configure-miner pm-rbs
+                          #:key
+                          (maxiter 1000)
+                          (complexity-penalty 1)
+                          (incremental-expansion (stv 0 1))
+                          (max-conjuncts 3))
 "
   Given a Concept node representing a rule based system for the
   pattern miner. Automatically configure it with the appropriate
   rules and parameters.
 
-  Usage: (configure-miner pm-rbs #:maxiter mi)
+  Usage: (configure-miner pm-rbs
+                          #:maxiter mi
+                          #:complexity-penalty cp
+                          #:incremental-expansion tv
+                          #:max-conjuncts mc)
 
   pm-rbs: Concept node of the rule-based system to configure
 
-  mi: [optional] Maximum number of iterations of the rule-engine
+  mi: [optional, default=1000] Maximum number of iterations allocated.
+      If negative then the pattern miner keeps running till all patterns
+      have been exhausted (not recommended unless you know what you're doing).
+
+  cp: [optional, default=1] Complexity penalty parameter passed to the forward
+      chainer. It controls breadth vs depth search. A high value means more
+      breadth. A value of 0 means a equilibrium between breadth and depth.
+      A negative value means more depth. Possible range is (-inf, +inf)
+      but it's rarely necessary in practice to go outside of [-10, 10].
+
+  tv: [optional, default=(stv 0 1)] Truth value of a rule to expand existing
+      conjunctions of patterns. It will only expand conjunctions with enough
+      support with patterns with enough support. Alternatively the user can
+      provide #t instead of a truth value. In that case a default true value
+      will be selected.
+
+  mc: [optional, default=3] In case tv is set to a positive strength and
+      confidence, and thus incremental conjunction expansion is enabled, that
+      option allows to limit the number of conjuncts to mc. If negative then
+      the number of conjuncts can grow unlimited (not recommended unless you
+      know what you're doing). As of now mc can not be set above 9 (which
+      should be more than enough).
 "
   ;; Load and associate rules to pm-rbs
-  (configure-rules pm-rbs)
+  (configure-rules pm-rbs
+                   #:incremental-expansion incremental-expansion
+                   #:max-conjuncts max-conjuncts)
 
   ;; Set parameters
   (ure-set-maximum-iterations pm-rbs maxiter)
-  (ure-set-fc-retry-sources pm-rbs #f)
+  (ure-set-complexity-penalty pm-rbs complexity-penalty)
+
+  ;; If there is no incremental expansion then each rule is
+  ;; deterministic, thus no need to retry exhausted sources
+  (ure-set-fc-retry-exhausted-sources pm-rbs (not (false-tv? incremental-expansion)))
 )
 
 (define (minsup-eval pattern texts ms)
@@ -154,7 +227,7 @@
   (length (get-members C)))
 
 (define (size-ge texts ms)
-  (let* ((result (>= (get-cardinality texts) (atom->number ms))))
+  (let* ((result (>= (get-cardinality texts) (cog-number ms))))
     (bool->tv result)))
 
 (define (texts->atomspace texts)
@@ -168,7 +241,7 @@
 
 (define (pattern->bindlink pattern)
 "
-  Turn a pattern into a BindLink for for subsequent pattern
+  Turn a pattern into a BindLink for subsequent pattern
   matching texts.
 "
   (if (= (cog-arity pattern) 2)
@@ -179,37 +252,6 @@
       ;; Without variable declaration
       (let* ((body (gar pattern)))
         (Bind body body)))) ; to deal with unordered links
-
-(define (support pat texts ms)
-"
-  Return the min between the frequency of pat according to texts and
-  ms, or #f if pat is ill-formed. If the pattern is top then return the
-  cardinality of concept texts.
-"
-  ;; (cog-logger-debug "support pat = ~a, texts = ~a, ms = ~a" pat texts ms)
-  (if (equal? pat (top))
-      (get-cardinality texts)
-      (let* ((pat-prnx (cog-execute! pat))  ; get pat in prenex form
-             (ill-formed (null? pat-prnx)))
-        (if ill-formed
-            #f
-            (if (eq? (cog-type pat-prnx) 'LambdaLink)
-                (let* ((texts-as (texts->atomspace texts))
-                       (query-as (cog-new-atomspace texts-as))
-                       (prev-as (cog-set-atomspace! query-as))
-                       (bl (pattern->bindlink pat-prnx))
-                       (results (cog-bind-first-n bl ms)))
-                  (cog-set-atomspace! prev-as)
-                  (cog-arity results))
-                1)))))
-
-(define (enough-support? pat texts ms)
-"
-  Return #t if pat has enough support w.r.t. texts, that is if
-  the frequency of pat is greater than or equal to ms. Return #f
-  otherwise.
-"
-  (<= ms (support pat texts ms)))
 
 (define (fetch-patterns texts ms)
 "
@@ -254,12 +296,25 @@
 (define* (cog-miner . args)
   (display ("The command you are looking for is cog-mine.")))
 
-(define* (cog-mine texts ms #:key (maxiter -1) (initpat (top)))
+(define* (cog-mine texts
+                   #:key
+                   (minsup 10)
+                   (initpat (top))
+                   (maxiter 1000)
+                   (complexity-penalty 1)
+                   (incremental-expansion (stv 0 1))
+                   (max-conjuncts 3))
 "
   Mine patterns in texts with minimum support ms, optionally
   using maxiter iterations and starting from the initial pattern initpat.
 
-  Usage: (cog-mine texts ms #:maxiter mi #:initpat ip)
+  Usage: (cog-mine texts
+                   #:minsup ms
+                   #:initpat ip
+                   #:maxiter mi
+                   #:complexity-penalty cp
+                   #:incremental-expansion tv
+                   #:max-conjuncts mc)
 
   texts: Collection of texts to mine. It can be given in 3 forms
 
@@ -286,13 +341,34 @@
               tn
               (Concept texts-name))
 
-  ms: Minimum support. All pattern with frequency below ms are
-      discarded
+  ms: [optional, default=10] Minimum support. All patterns with frequency below
+      ms are discarded. Can be a Scheme number or an Atomese number node.
 
-  mi: [optional] Maximum number of iterations allocated
+  ip: [optional, default=(top)] Initial pattern to start the search from.
+      All mined patterns will be specializations of this pattern.
 
-  ip: [optional] Initial pattern to start the search from. All mined
-      pattern will be specializations of this pattern.
+  mi: [optional, default=1000] Maximum number of iterations allocated.
+      If negative then the pattern miner keeps running till all patterns
+      have been exhausted (not recommended unless you know what you're doing).
+
+  cp: [optional, default=1] Complexity penalty parameter passed to the forward
+      chainer. It controls breadth vs depth search. A high value means more
+      breadth. A value of 0 means an equilibrium between breadth and depth.
+      A negative value means more depth. Possible range is (-inf, +inf)
+      but it's rarely necessary in practice to go outside of [-10, 10].
+
+  tv: [optional, default=(stv 0 1)] Truth value of a rule to expand existing
+      conjunctions of patterns. It will only expand conjunctions with enough
+      support with patterns with enough support. Alternatively the user can
+      provide #t instead of a truth value. In that case a default true value
+      will be selected.
+
+  mc: [optional, default=3] In case tv is set to a positive strength and
+      confidence, and thus incremental conjunction expansion is enabled, that
+      option allows to limit the number of conjuncts to mc. If negative then
+      the number of conjuncts can grow unlimited (not recommended unless you
+      know what you're doing). As of now mc can not be set above 9 (which
+      should be more than enough).
 
   Under the hood it will create a rule base and a query for the rule
   engine, configure it according to the user's options and run it.
@@ -308,7 +384,7 @@
      specializations cannot have more support than their parent
      abstraction.
 
-  2. If it takes too long to copmlete, it means the search tree is
+  2. If it takes too long to complete, it means the search tree is
      too large to explorer entirely. Set mi to a positive value to
      halt the exploration after a certain number of iterations of
      the rule engine.
@@ -323,31 +399,37 @@
          (tmp-as (cog-new-atomspace (cog-atomspace)))
          (parent-as (cog-set-atomspace! tmp-as))
          (texts-concept? (and (cog-atom? texts)
-                              (eq? (cog-type texts 'ConceptNode))))
+                              (eq? (cog-type texts) 'ConceptNode)))
          (texts-cpt (if (not texts-concept?)
                         ;; Construct a temporary concept containing
                         ;; the texts
                         (fill-texts-cpt (random-texts-cpt) texts)
                         ;; Otherwise texts is already a concept
                         texts))
+         (ms-nn (if (number? minsup) (Number minsup) minsup))
          ;; Check that the initial pattern has enough support
-         (es (enough-support? initpat texts-cpt ms)))
+         (es (cog-enough-support? initpat texts-cpt ms-nn)))
     (if (not es)
         ;; The initial pattern doesn't have enough support, thus the
-        ;; solution set is empty        
+        ;; solution set is empty
         (and ;; Use and to sequence statements
              (cog-set-atomspace! parent-as)
              ;; TODO: delete tmp-as if possible
              (Set))
+
         ;; The initial pattern has enough support, let's configure the
         ;; rule engine and run the pattern mining query
-        (let* ((source (minsup-eval-true initpat texts-cpt ms))
+        (let* ((source (minsup-eval-true initpat texts-cpt minsup))
                (miner-rbs (random-miner-rbs-cpt)))
-          (configure-miner miner-rbs #:maxiter maxiter)
+          (configure-miner miner-rbs
+                           #:maxiter maxiter
+                           #:complexity-penalty complexity-penalty
+                           #:incremental-expansion incremental-expansion
+                           #:max-conjuncts max-conjuncts)
           (let* (;; Run the pattern miner in a forward way
                  (results (cog-fc miner-rbs source))
                  ;; Fetch all relevant results
-                 (patterns (fetch-patterns texts-cpt ms))
+                 (patterns (fetch-patterns texts-cpt minsup))
                  (patterns-lst (cog-outgoing-set patterns)))
             (cog-set-atomspace! parent-as)
             ;; TODO: delete tmp-as but without deleting its atoms, if
@@ -360,14 +442,14 @@
     random-texts-cpt
     random-miner-rbs-cpt
     fill-texts-cpt
+    configure-mandatory-rules
+    configure-optional-rules
     configure-rules
     configure-miner
     minsup-eval
     minsup-eval-true
     get-members
     get-cardinality
-    support
-    enough-support?
     fetch-patterns
     conjunct-pattern
     cog-miner

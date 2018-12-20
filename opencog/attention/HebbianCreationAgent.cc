@@ -22,10 +22,10 @@
 #include <opencog/util/Config.h>
 #include <opencog/util/algorithm.h>
 
-#include <opencog/atoms/proto/NameServer.h>
+#include <opencog/atoms/atom_types/NameServer.h>
 #include <opencog/atoms/base/Link.h>
-#include <opencog/truthvalue/IndefiniteTruthValue.h>
-#include <opencog/truthvalue/SimpleTruthValue.h>
+#include <opencog/atoms/truthvalue/IndefiniteTruthValue.h>
+#include <opencog/atoms/truthvalue/SimpleTruthValue.h>
 #include <opencog/attention/atom_types.h>
 #include <opencog/atomutils/Neighbors.h>
 
