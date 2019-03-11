@@ -1,10 +1,14 @@
 ADD_LIBRARY (nlpfz SHARED
 	Fuzzy
+	FuzzyMatch
+	FuzzyMatchBasic
 	FuzzySCM
 )
 
 TARGET_LINK_LIBRARIES (nlpfz
+	neighbors
 	nlp-types
+	attentionbonk
 	${ATOMSPACE_LIBRARIES}
 )
 

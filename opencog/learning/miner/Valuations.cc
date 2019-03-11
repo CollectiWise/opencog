@@ -21,18 +21,17 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "Valuations.h"
-
-#include "MinerUtils.h"
+#include <boost/range/algorithm/find.hpp>
 
 #include <opencog/util/Logger.h>
 #include <opencog/util/oc_assert.h>
 #include <opencog/atoms/base/Atom.h>
-#include <opencog/atoms/pattern/PatternLink.h>
 #include <opencog/atoms/core/LambdaLink.h>
-#include <opencog/atomutils/TypeUtils.h>
+#include <opencog/atoms/core/TypeUtils.h>
+#include <opencog/atoms/pattern/PatternLink.h>
 
-#include <boost/range/algorithm/find.hpp>
+#include "MinerUtils.h"
+#include "Valuations.h"
 
 namespace opencog
 {
@@ -189,6 +188,11 @@ const SCValuations& Valuations::get_scvaluations(const Handle& var) const
 	throw RuntimeException(TRACE_INFO, "There's likely a bug");
 }
 
+const SCValuations& Valuations::get_scvaluations(unsigned var_idx) const
+{
+	return get_scvaluations(variable(var_idx));
+}
+
 const SCValuations& Valuations::focus_scvaluations() const
 {
 	return get_scvaluations(focus_variable());
@@ -204,6 +208,27 @@ void Valuations::dec_focus_variable() const
 {
 	ValuationsBase::dec_focus_variable();
 	focus_scvaluations().dec_focus_variable();
+}
+
+HandleUCounter Valuations::values(const Handle& var) const
+{
+	return values(index(var));
+}
+
+HandleUCounter Valuations::values(unsigned var_idx) const
+{
+	// Get values from corresponding component
+	const SCValuations& var_scv = get_scvaluations(var_idx);
+	HandleUCounter var_values = var_scv.values(variable(var_idx));
+
+	// Take into account disconnected components
+	unsigned factor = 1;
+	for (const SCValuations& other_scv : scvs)
+		if (&var_scv != &other_scv)
+			factor *= other_scv.size();
+	var_values *= factor;
+
+	return var_values;
 }
 
 unsigned Valuations::size() const

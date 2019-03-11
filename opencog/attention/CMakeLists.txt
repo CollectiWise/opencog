@@ -49,7 +49,11 @@ ADD_LIBRARY(attention SHARED
 	#scm/StimulationAgent
 )
 
-TARGET_LINK_LIBRARIES(attention attention-types server ${ATOMSPACE_LIBRARIES})
+TARGET_LINK_LIBRARIES(attention
+	attention-types
+	neighbors
+	server
+	${ATOMSPACE_LIBRARIES})
 
 
 INSTALL (TARGETS attention-types
@@ -63,12 +67,9 @@ INSTALL (TARGETS attention
 ADD_GUILE_MODULE (FILES
 	attention.scm
 	default-param-values.scm
-	MODULE_DESTINATION "${GUILE_SITE_DIR}/opencog/attention"
-)
-
-INSTALL (FILES
 	${CMAKE_CURRENT_BINARY_DIR}/attention_types.scm
-	DESTINATION "${GUILE_SITE_DIR}/opencog/attention"
+	MODULE_DESTINATION "${GUILE_SITE_DIR}/opencog/attention"
+	DEPENDS attention_atom_types
 )
 
 INSTALL (FILES
